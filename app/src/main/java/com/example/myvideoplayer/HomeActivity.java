@@ -51,6 +51,7 @@ public class HomeActivity extends AppCompatActivity {
         tvSelectionCount = findViewById(R.id.tv_selection_count);
 
         findViewById(R.id.btn_close_selection).setOnClickListener(v -> toggleSelectionMode(false));
+        findViewById(R.id.btn_info_selected).setOnClickListener(v -> showFolderProperties());
         findViewById(R.id.btn_delete_selected).setOnClickListener(v -> {
             new AlertDialog.Builder(this)
                 .setTitle("Delete Folders")
@@ -100,11 +101,13 @@ public class HomeActivity extends AppCompatActivity {
         if (!active) selectedFolders.clear();
         layoutNormal.setVisibility(active ? View.GONE : View.VISIBLE);
         layoutSelection.setVisibility(active ? View.VISIBLE : View.GONE);
+        updateSelectionUI();
         if (adapter != null) adapter.notifyDataSetChanged();
     }
 
     private void updateSelectionUI() {
         tvSelectionCount.setText(selectedFolders.size() + " Selected");
+        findViewById(R.id.btn_info_selected).setVisibility(selectedFolders.size() == 1 ? View.VISIBLE : View.GONE);
     }
 
     private void deleteMultipleFolders() {
@@ -137,6 +140,54 @@ public class HomeActivity extends AppCompatActivity {
             toggleSelectionMode(false);
             loadFolders();
         }
+    }
+
+    private void showFolderProperties() {
+        if (selectedFolders.size() != 1) return;
+        String bId = selectedFolders.iterator().next();
+        String folderName = "Unknown";
+        String folderPath = "Unknown";
+        int videoCount = 0;
+        long totalSize = 0;
+
+        Uri allUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        String[] proj = { MediaStore.Video.Media.BUCKET_DISPLAY_NAME, MediaStore.Video.Media.DATA, MediaStore.Video.Media.SIZE };
+        try (Cursor cursor = getContentResolver().query(allUri, proj, MediaStore.Video.Media.BUCKET_ID + "=?", new String[]{bId}, null)) {
+            if (cursor != null) {
+                int nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME);
+                int dataCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA);
+                int sizeCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE);
+                while (cursor.moveToNext()) {
+                    if (videoCount == 0) {
+                        folderName = cursor.getString(nameCol);
+                        String path = cursor.getString(dataCol);
+                        if (path != null && path.contains("/")) {
+                            folderPath = path.substring(0, path.lastIndexOf('/'));
+                        }
+                    }
+                    totalSize += cursor.getLong(sizeCol);
+                    videoCount++;
+                }
+            }
+        }
+
+        String msg = "Name: " + folderName + "\n\n" +
+                     "Path: " + folderPath + "\n\n" +
+                     "Videos: " + videoCount + "\n\n" +
+                     "Total Size: " + formatSize(totalSize);
+
+        new AlertDialog.Builder(this)
+            .setTitle("Folder Properties")
+            .setMessage(msg)
+            .setPositiveButton("OK", null)
+            .show();
+    }
+
+    private String formatSize(long sizeBytes) {
+        if (sizeBytes <= 0) return "0 B";
+        final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
+        int digitGroups = (int) (Math.log10(sizeBytes) / Math.log10(1024));
+        return new java.text.DecimalFormat("#,##0.#").format(sizeBytes / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
     }
 
     @Override

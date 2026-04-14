@@ -61,6 +61,7 @@ public class FolderVideosActivity extends AppCompatActivity {
         tvSelectionCount = findViewById(R.id.tv_selection_count);
 
         findViewById(R.id.btn_close_selection).setOnClickListener(v -> toggleSelectionMode(false));
+        findViewById(R.id.btn_info_selected).setOnClickListener(v -> showVideoProperties());
         findViewById(R.id.btn_delete_selected).setOnClickListener(v -> {
             new AlertDialog.Builder(this)
                 .setTitle("Delete Videos")
@@ -116,11 +117,13 @@ public class FolderVideosActivity extends AppCompatActivity {
         if (!active) selectedUris.clear();
         layoutNormal.setVisibility(active ? View.GONE : View.VISIBLE);
         layoutSelection.setVisibility(active ? View.VISIBLE : View.GONE);
+        updateSelectionUI();
         if (adapter != null) adapter.notifyDataSetChanged();
     }
 
     private void updateSelectionUI() {
         tvSelectionCount.setText(selectedUris.size() + " Selected");
+        findViewById(R.id.btn_info_selected).setVisibility(selectedUris.size() == 1 ? View.VISIBLE : View.GONE);
     }
 
     private void deleteMultipleVideos() {
@@ -154,6 +157,41 @@ public class FolderVideosActivity extends AppCompatActivity {
                 // Ignore complex Q scoping for briefness, OS will handle it mostly.
             }
         }
+    }
+
+    private void showVideoProperties() {
+        if (selectedUris.size() != 1) return;
+        Uri uri = selectedUris.iterator().next();
+        String vName = "Unknown", vPath = "Unknown", vRes = "Unknown";
+        long vSize = 0;
+
+        String[] proj = { MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.DATA, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.RESOLUTION };
+        try (Cursor cursor = getContentResolver().query(uri, proj, null, null, null)) {
+            if (cursor != null && cursor.moveToFirst()) {
+                vName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME));
+                vPath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
+                vSize = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE));
+                vRes = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.RESOLUTION));
+            }
+        }
+
+        String msg = "Name: " + vName + "\n\n" +
+                     "Path: " + vPath + "\n\n" +
+                     "Resolution: " + (vRes != null ? vRes : "Unknown") + "\n\n" +
+                     "File Size: " + formatSize(vSize);
+
+        new AlertDialog.Builder(this)
+            .setTitle("Properties")
+            .setMessage(msg)
+            .setPositiveButton("OK", null)
+            .show();
+    }
+
+    private String formatSize(long sizeBytes) {
+        if (sizeBytes <= 0) return "0 B";
+        final String[] units = new String[] { "B", "KB", "MB", "GB", "TB" };
+        int digitGroups = (int) (Math.log10(sizeBytes) / Math.log10(1024));
+        return new java.text.DecimalFormat("#,##0.#").format(sizeBytes / Math.pow(1024, digitGroups)) + " " + units[digitGroups];
     }
 
     @Override
