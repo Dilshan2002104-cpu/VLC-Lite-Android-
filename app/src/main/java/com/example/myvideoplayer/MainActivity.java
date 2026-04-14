@@ -475,7 +475,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        handler.removeCallbacks(updateTimeTask);
+        handler.removeCallbacksAndMessages(null); // Purge absolutely all pending Runnables to decisively stop Activity memory leaks
         if (mediaPlayer != null) {
             mediaPlayer.release();
             libVLC.release();

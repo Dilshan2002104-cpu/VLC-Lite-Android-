@@ -179,6 +179,7 @@ public class FolderVideosActivity extends AppCompatActivity {
 
             boolean finalAnyError = anyError;
             runOnUiThread(() -> {
+                if (isFinishing() || isDestroyed()) return;
                 if (finalAnyError) Toast.makeText(FolderVideosActivity.this, "Some files failed to fully copy.", Toast.LENGTH_SHORT).show();
                 deleteMultipleVideos(); // Use native routine to prompt for source deletion
             });
