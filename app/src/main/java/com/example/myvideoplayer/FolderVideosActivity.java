@@ -21,6 +21,10 @@ import android.content.IntentSender;
 import java.util.Collections;
 import java.util.HashSet;
 
+import com.bumptech.glide.Glide;
+import com.bumptech.glide.load.engine.DiskCacheStrategy;
+import com.bumptech.glide.request.RequestOptions;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
@@ -292,15 +296,16 @@ public class FolderVideosActivity extends AppCompatActivity {
             boolean isSelected = selectedUris.contains(item.uri);
             ((androidx.cardview.widget.CardView)holder.itemView).setCardBackgroundColor(isSelected ? android.graphics.Color.parseColor("#2980B9") : android.graphics.Color.parseColor("#1A1A1A"));
 
-            // Rapid Native Thumbnail reading (Android 10+)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                try {
-                    Bitmap thumb = getContentResolver().loadThumbnail(item.uri, new Size(300, 300), null);
-                    holder.ivThumb.setImageBitmap(thumb);
-                } catch (Exception e) {
-                    holder.ivThumb.setImageResource(android.R.drawable.ic_media_play);
-                }
-            }
+            // Smooth Glide Thumbnail rendering for all formats (including MKV/HEVC)
+            Glide.with(FolderVideosActivity.this)
+                 .asBitmap()
+                 .load(item.uri)
+                 .apply(new RequestOptions()
+                         .placeholder(R.drawable.ic_video_placeholder)
+                         .error(R.drawable.ic_video_placeholder)
+                         .diskCacheStrategy(DiskCacheStrategy.ALL)
+                         .centerCrop())
+                 .into(holder.ivThumb);
 
             holder.itemView.setOnClickListener(v -> {
                 if (isSelectionMode) {

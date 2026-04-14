@@ -26,4 +26,7 @@ dependencies {
     
     // LibVLC for playing ALL formats (HEVC, AC3, MKV, etc) flawlessly
     implementation 'org.videolan.android:libvlc-all:3.5.1'
+    
+    // Glide for flawless offline MKV/HEVC Thumbnail caching
+    implementation 'com.github.bumptech.glide:glide:4.16.0'
 }
