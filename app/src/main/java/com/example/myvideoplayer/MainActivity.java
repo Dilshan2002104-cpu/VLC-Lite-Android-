@@ -14,6 +14,7 @@ import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
+import android.widget.PopupMenu;
 import android.widget.SeekBar;
 import android.widget.TextView;
 import android.widget.Toast;
@@ -40,9 +41,10 @@ public class MainActivity extends AppCompatActivity {
     private VLCVideoLayout videoLayout;
     private LibVLC libVLC;
     private MediaPlayer mediaPlayer;
+    private Uri currentVideoUri;
     
     // Custom UI Controls
-    private LinearLayout layoutControls;
+    private LinearLayout layoutControls, layoutTopControls;
     private ImageView btnPrev, btnPlayPause, btnNext, btnRotate, btnSubtitle;
     private SeekBar seekBar;
     private TextView tvCurrent, tvTotal, tvOsd;
@@ -50,6 +52,11 @@ public class MainActivity extends AppCompatActivity {
     private boolean isTracking = false;
     private boolean isLandscape = false;
     private Runnable hideOsdTask = () -> { if (tvOsd != null) tvOsd.setVisibility(View.GONE); };
+
+    // Subtitle Customization State
+    private String subtitleColor = "16777215"; // White
+    private String subtitleSize = "16"; // Normal
+    private String activeSubtitlePath = null;
 
     // Feature: Gestures
     private AudioManager audioManager;
@@ -78,6 +85,7 @@ public class MainActivity extends AppCompatActivity {
         // Map Views
         videoLayout = findViewById(R.id.video_layout);
         layoutControls = findViewById(R.id.layout_controls);
+        layoutTopControls = findViewById(R.id.layout_top_controls);
         btnPrev = findViewById(R.id.btn_prev);
         btnPlayPause = findViewById(R.id.btn_play_pause);
         btnNext = findViewById(R.id.btn_next);
@@ -89,29 +97,49 @@ public class MainActivity extends AppCompatActivity {
         tvOsd = findViewById(R.id.tv_osd);
 
         // Get URI
-        Uri videoUri;
         if (!FolderVideosActivity.activePlaylist.isEmpty() && FolderVideosActivity.activeVideoIndex != -1) {
-            videoUri = FolderVideosActivity.activePlaylist.get(FolderVideosActivity.activeVideoIndex);
+            currentVideoUri = FolderVideosActivity.activePlaylist.get(FolderVideosActivity.activeVideoIndex);
         } else {
-            videoUri = getIntent().getData() != null ? getIntent().getData() : Uri.parse("https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8");
+            currentVideoUri = getIntent().getData() != null ? getIntent().getData() : Uri.parse("https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8");
         }
 
-        // Init LibVLC (Hardware decoding preferred, automatically falls back to powerful SW decoding for unsupported HEVC!)
+        initOrUpdateVLC(0);
+
+        setupControls();
+        setupGestures();
+    }
+
+    private void initOrUpdateVLC(long seekTime) {
+        if (mediaPlayer != null) {
+            mediaPlayer.release();
+            libVLC.release();
+        }
+
         ArrayList<String> options = new ArrayList<>();
         options.add("--aout=opensles");
         options.add("--audio-time-stretch"); 
-        options.add("-vvv"); // verbose
+        options.add("-vvv");
+        options.add("--freetype-color=" + subtitleColor);
+        options.add("--freetype-rel-fontsize=" + subtitleSize);
         
         try {
             libVLC = new LibVLC(this, options);
             mediaPlayer = new MediaPlayer(libVLC);
-            loadMedia(videoUri);
+            mediaPlayer.attachViews(videoLayout, null, false, false);
+            
+            loadMedia(currentVideoUri);
+            
+            if (activeSubtitlePath != null) {
+                mediaPlayer.addSlave(Media.Slave.Type.Subtitle, Uri.parse("file://" + activeSubtitlePath), true);
+            }
+            if (seekTime > 0) {
+                handler.postDelayed(() -> {
+                    if (mediaPlayer != null) mediaPlayer.setTime(seekTime);
+                }, 400);
+            }
         } catch (Exception e) {
             Toast.makeText(this, "VLC Engine Error", Toast.LENGTH_SHORT).show();
         }
-
-        setupControls();
-        setupGestures();
     }
 
     private void loadMedia(Uri uri) {
@@ -158,7 +186,9 @@ public class MainActivity extends AppCompatActivity {
         btnNext.setOnClickListener(v -> {
             if (!FolderVideosActivity.activePlaylist.isEmpty() && FolderVideosActivity.activeVideoIndex < FolderVideosActivity.activePlaylist.size() - 1) {
                 FolderVideosActivity.activeVideoIndex++;
-                loadMedia(FolderVideosActivity.activePlaylist.get(FolderVideosActivity.activeVideoIndex));
+                currentVideoUri = FolderVideosActivity.activePlaylist.get(FolderVideosActivity.activeVideoIndex);
+                activeSubtitlePath = null;
+                loadMedia(currentVideoUri);
                 showOsd("Next Video");
             } else {
                 Toast.makeText(this, "Last video in folder", Toast.LENGTH_SHORT).show();
@@ -168,7 +198,9 @@ public class MainActivity extends AppCompatActivity {
         btnPrev.setOnClickListener(v -> {
             if (!FolderVideosActivity.activePlaylist.isEmpty() && FolderVideosActivity.activeVideoIndex > 0) {
                 FolderVideosActivity.activeVideoIndex--;
-                loadMedia(FolderVideosActivity.activePlaylist.get(FolderVideosActivity.activeVideoIndex));
+                currentVideoUri = FolderVideosActivity.activePlaylist.get(FolderVideosActivity.activeVideoIndex);
+                activeSubtitlePath = null;
+                loadMedia(currentVideoUri);
                 showOsd("Previous Video");
             } else {
                 Toast.makeText(this, "First video in folder", Toast.LENGTH_SHORT).show();
@@ -186,16 +218,44 @@ public class MainActivity extends AppCompatActivity {
         });
 
         btnSubtitle.setOnClickListener(v -> {
-            if (mediaPlayer.isPlaying()) {
-                mediaPlayer.pause();
-                btnPlayPause.setImageResource(android.R.drawable.ic_media_play);
-            }
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.setType("*/*");
-            String[] mimetypes = {"application/x-subrip", "text/vtt", "text/plain", "application/octet-stream"};
-            intent.putExtra(Intent.EXTRA_MIME_TYPES, mimetypes);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            subtitlePickerLauncher.launch(intent);
+            if (mediaPlayer == null) return;
+            long currentTime = mediaPlayer.getTime();
+            PopupMenu popup = new PopupMenu(MainActivity.this, btnSubtitle);
+            popup.getMenu().add("Load Subtitle (.srt)");
+            popup.getMenu().add("Color: Yellow");
+            popup.getMenu().add("Color: White");
+            popup.getMenu().add("Size: Large");
+            popup.getMenu().add("Size: Normal");
+
+            popup.setOnMenuItemClickListener(item -> {
+                String title = item.getTitle().toString();
+                if (title.contains("Load")) {
+                    if (mediaPlayer.isPlaying()) {
+                        mediaPlayer.pause();
+                        if (btnPlayPause != null) btnPlayPause.setImageResource(android.R.drawable.ic_media_play);
+                    }
+                    Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                    intent.setType("*/*");
+                    String[] mimetypes = {"application/x-subrip", "text/vtt", "text/plain", "application/octet-stream"};
+                    intent.putExtra(Intent.EXTRA_MIME_TYPES, mimetypes);
+                    intent.addCategory(Intent.CATEGORY_OPENABLE);
+                    subtitlePickerLauncher.launch(intent);
+                } else if (title.contains("Yellow")) {
+                    subtitleColor = "16776960";
+                    initOrUpdateVLC(currentTime);
+                } else if (title.contains("White")) {
+                    subtitleColor = "16777215";
+                    initOrUpdateVLC(currentTime);
+                } else if (title.contains("Large")) {
+                    subtitleSize = "22";
+                    initOrUpdateVLC(currentTime);
+                } else if (title.contains("Normal")) {
+                    subtitleSize = "16";
+                    initOrUpdateVLC(currentTime);
+                }
+                return true;
+            });
+            popup.show();
         });
 
         seekBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
@@ -293,8 +353,10 @@ public class MainActivity extends AppCompatActivity {
             public boolean onSingleTapConfirmed(MotionEvent e) {
                 if (layoutControls.getVisibility() == View.VISIBLE) {
                     layoutControls.setVisibility(View.GONE);
+                    layoutTopControls.setVisibility(View.GONE);
                 } else {
                     layoutControls.setVisibility(View.VISIBLE);
+                    layoutTopControls.setVisibility(View.VISIBLE);
                 }
                 return true;
             }
@@ -362,6 +424,7 @@ public class MainActivity extends AppCompatActivity {
                     if (subtitleUri != null && mediaPlayer != null) {
                         String localPath = getPathFromContentUri(subtitleUri);
                         if (localPath != null) {
+                            activeSubtitlePath = localPath;
                             mediaPlayer.addSlave(Media.Slave.Type.Subtitle, Uri.parse("file://" + localPath), true);
                             Toast.makeText(this, "Subtitle Attached!", Toast.LENGTH_SHORT).show();
                         }
