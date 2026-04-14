@@ -11,7 +11,11 @@ import android.provider.MediaStore;
 import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.PopupMenu;
 import android.widget.TextView;
+import android.app.AlertDialog;
+import android.app.PendingIntent;
+import android.content.IntentSender;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -41,6 +45,42 @@ public class HomeActivity extends AppCompatActivity {
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
         checkPermissions();
+    }
+
+    private void deleteFolder(String bucketId) {
+        List<Uri> uris = new ArrayList<>();
+        Uri allUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        String[] proj = { MediaStore.Video.Media._ID };
+        try (Cursor cursor = getContentResolver().query(allUri, proj, MediaStore.Video.Media.BUCKET_ID + "=?", new String[]{bucketId}, null)) {
+            if (cursor != null) {
+                int idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID);
+                while (cursor.moveToNext()) {
+                    uris.add(Uri.withAppendedPath(allUri, String.valueOf(cursor.getLong(idCol))));
+                }
+            }
+        }
+        
+        if (uris.isEmpty()) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), uris);
+                startIntentSenderForResult(pi.getIntentSender(), 1002, null, 0, 0, 0, null);
+            } catch (Exception e) {}
+        } else {
+            for (Uri u : uris) {
+                try { getContentResolver().delete(u, null, null); } catch (Exception e) {}
+            }
+            loadFolders();
+        }
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == 1002 && resultCode == RESULT_OK) {
+            loadFolders();
+        }
     }
 
     private void checkPermissions() {
@@ -126,6 +166,24 @@ public class HomeActivity extends AppCompatActivity {
                 intent.putExtra("BUCKET_ID", item.id);
                 intent.putExtra("BUCKET_NAME", item.name);
                 startActivity(intent);
+            });
+
+            holder.itemView.setOnLongClickListener(v -> {
+                PopupMenu popup = new PopupMenu(HomeActivity.this, v);
+                popup.getMenu().add("Delete Folder");
+                popup.setOnMenuItemClickListener(menuItem -> {
+                    if (menuItem.getTitle().toString().equals("Delete Folder")) {
+                        new AlertDialog.Builder(HomeActivity.this)
+                            .setTitle("Delete Entire Folder")
+                            .setMessage("Are you sure you want to permanently delete all videos belonging to this folder?")
+                            .setPositiveButton("Delete All", (dialog, which) -> deleteFolder(item.id))
+                            .setNegativeButton("Cancel", null)
+                            .show();
+                    }
+                    return true;
+                });
+                popup.show();
+                return true;
             });
         }
 
