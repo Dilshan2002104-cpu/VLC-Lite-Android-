@@ -165,13 +165,13 @@ public class FolderVideosActivity extends AppCompatActivity {
                     }
 
                     java.io.File destFile = new java.io.File(vaultDir, displayName);
-                    java.io.InputStream in = getContentResolver().openInputStream(uri);
-                    java.io.OutputStream out = new java.io.FileOutputStream(destFile);
-                    
-                    byte[] buf = new byte[8192];
-                    int len;
-                    while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
-                    in.close(); out.close();
+                    try (java.io.InputStream in = getContentResolver().openInputStream(uri);
+                         java.io.OutputStream out = new java.io.FileOutputStream(destFile)) {
+                        
+                        byte[] buf = new byte[8192];
+                        int len;
+                        while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
+                    }
                 } catch (Exception e) {
                     anyError = true;
                 }
@@ -354,13 +354,19 @@ public class FolderVideosActivity extends AppCompatActivity {
                 for (java.io.File f : files) {
                     if (f.getName().equals(".nomedia")) continue;
                     long dur = 0;
+                    android.media.MediaMetadataRetriever ret = null;
                     try {
-                        android.media.MediaMetadataRetriever ret = new android.media.MediaMetadataRetriever();
+                        ret = new android.media.MediaMetadataRetriever();
                         ret.setDataSource(f.getAbsolutePath());
                         String time = ret.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
                         if (time != null) dur = Long.parseLong(time);
-                        ret.release();
-                    } catch (Exception e) {}
+                    } catch (Exception e) {
+                        // ignore 
+                    } finally {
+                        if (ret != null) {
+                            try { ret.release(); } catch (Exception ignore) {}
+                        }
+                    }
                     videos.add(new VideoItem(0L, f.getName(), dur, Uri.fromFile(f)));
                 }
             }

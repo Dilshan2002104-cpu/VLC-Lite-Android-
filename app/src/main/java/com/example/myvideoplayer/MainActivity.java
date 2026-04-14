@@ -398,17 +398,17 @@ public class MainActivity extends AppCompatActivity {
 
     // Scoped Storage safely fetches the raw text out of content:// schema into C++ readable file boundary
     private String getPathFromContentUri(Uri uri) {
-        try {
-            InputStream is = getContentResolver().openInputStream(uri);
+        try (InputStream is = getContentResolver().openInputStream(uri)) {
             if (is == null) return null;
             File tempFile = new File(getCacheDir(), "sub_cache.srt");
-            FileOutputStream os = new FileOutputStream(tempFile);
-            byte[] buffer = new byte[1024];
-            int read;
-            while ((read = is.read(buffer)) != -1) {
-                os.write(buffer, 0, read);
+            try (FileOutputStream os = new FileOutputStream(tempFile)) {
+                byte[] buffer = new byte[1024];
+                int read;
+                while ((read = is.read(buffer)) != -1) {
+                    os.write(buffer, 0, read);
+                }
+                os.flush();
             }
-            os.flush(); os.close(); is.close();
             return tempFile.getAbsolutePath();
         } catch (Exception e) {
             return null;
