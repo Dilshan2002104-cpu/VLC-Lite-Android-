@@ -446,7 +446,9 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
         if (mediaPlayer != null && videoLayout != null) {
             // Securely re-attach the video surface after returning from background
-            mediaPlayer.attachViews(videoLayout, null, false, false);
+            if (!mediaPlayer.getVLCVout().areViewsAttached()) {
+                mediaPlayer.attachViews(videoLayout, null, false, false);
+            }
             
             // Force a decoder pipeline flush to drop smeared P-frames AFTER Surface is ready!
             if (mediaPlayer.getTime() > 0) {
