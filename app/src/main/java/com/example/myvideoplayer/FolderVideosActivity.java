@@ -162,26 +162,48 @@ public class FolderVideosActivity extends AppCompatActivity {
     private void showVideoProperties() {
         if (selectedUris.size() != 1) return;
         Uri uri = selectedUris.iterator().next();
-        String vName = "Unknown", vPath = "Unknown", vRes = "Unknown";
-        long vSize = 0;
+        String vName = "Unknown", vPath = "Unknown", vRes = "Unknown", vFormat = "Unknown";
+        long vSize = 0, vDuration = 0, vDate = 0;
 
-        String[] proj = { MediaStore.Video.Media.DISPLAY_NAME, MediaStore.Video.Media.DATA, MediaStore.Video.Media.SIZE, MediaStore.Video.Media.RESOLUTION };
+        String[] proj = { 
+            MediaStore.Video.Media.DISPLAY_NAME, 
+            MediaStore.Video.Media.DATA, 
+            MediaStore.Video.Media.SIZE, 
+            MediaStore.Video.Media.RESOLUTION,
+            MediaStore.Video.Media.DURATION,
+            MediaStore.Video.Media.DATE_ADDED,
+            MediaStore.Video.Media.MIME_TYPE
+        };
         try (Cursor cursor = getContentResolver().query(uri, proj, null, null, null)) {
             if (cursor != null && cursor.moveToFirst()) {
                 vName = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME));
                 vPath = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA));
                 vSize = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE));
                 vRes = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.RESOLUTION));
+                vDuration = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION));
+                vDate = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED));
+                vFormat = cursor.getString(cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE));
+                
+                if (vPath != null && vPath.lastIndexOf('.') > 0) {
+                    vFormat = vPath.substring(vPath.lastIndexOf('.') + 1).toUpperCase();
+                } else if (vFormat != null && vFormat.contains("/")) {
+                    vFormat = vFormat.split("/")[1].toUpperCase();
+                }
             }
         }
 
-        String msg = "Name: " + vName + "\n\n" +
-                     "Path: " + vPath + "\n\n" +
-                     "Resolution: " + (vRes != null ? vRes : "Unknown") + "\n\n" +
-                     "File Size: " + formatSize(vSize);
+        String dateStr = new java.text.SimpleDateFormat("dd MMM yyyy, hh:mm a", java.util.Locale.getDefault()).format(new java.util.Date(vDate * 1000L));
+
+        String msg = "File Name:\n" + vName + "\n\n" +
+                     "Location:\n" + vPath + "\n\n" +
+                     "Format :  " + vFormat + "\n" +
+                     "Size :  " + formatSize(vSize) + "\n" +
+                     "Resolution :  " + (vRes != null ? vRes : "Unknown") + "\n" +
+                     "Length :  " + formatDuration(vDuration) + "\n" +
+                     "Date :  " + dateStr;
 
         new AlertDialog.Builder(this)
-            .setTitle("Properties")
+            .setTitle("Video Properties")
             .setMessage(msg)
             .setPositiveButton("OK", null)
             .show();
