@@ -39,8 +39,7 @@ public class SplashActivity extends AppCompatActivity {
         TextView tvAppName = findViewById(R.id.tv_app_name);
         TextView tvTagline = findViewById(R.id.tv_tagline);
 
-        // Extremely lightweight GPU-accelerated ViewPropertyAnimator animations!
-        // Logo pops up like a spring
+
         imgLogo.animate()
                 .scaleX(1.0f)
                 .scaleY(1.0f)
@@ -49,7 +48,6 @@ public class SplashActivity extends AppCompatActivity {
                 .setInterpolator(new OvershootInterpolator())
                 .start();
 
-        // Text smoothly glides upwards and fades in
         tvAppName.animate()
                 .translationY(0)
                 .alpha(1.0f)
@@ -66,11 +64,9 @@ public class SplashActivity extends AppCompatActivity {
                 .setInterpolator(new DecelerateInterpolator())
                 .start();
 
-        // Navigate to Home after perfectly timed delay, clearing this activity from back stack
         new Handler(Looper.getMainLooper()).postDelayed(() -> {
             startActivity(new Intent(SplashActivity.this, HomeActivity.class));
             finish();
-            // Smooth natural Android transition
             overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out);
         }, 1800);
     }
