@@ -64,6 +64,14 @@ public class FolderVideosActivity extends AppCompatActivity {
         layoutSelection = findViewById(R.id.layout_selection);
         tvSelectionCount = findViewById(R.id.tv_selection_count);
 
+        findViewById(R.id.btn_vault).setVisibility(View.GONE);
+        if ("VAULT".equals(bucketId)) {
+            findViewById(R.id.btn_vault_move).setVisibility(View.GONE);
+            findViewById(R.id.btn_sort).setVisibility(View.GONE);
+        } else {
+            findViewById(R.id.btn_vault_move).setOnClickListener(v -> moveToVault());
+        }
+
         findViewById(R.id.btn_close_selection).setOnClickListener(v -> toggleSelectionMode(false));
         findViewById(R.id.btn_info_selected).setOnClickListener(v -> showVideoProperties());
         findViewById(R.id.btn_delete_selected).setOnClickListener(v -> {
@@ -130,9 +138,65 @@ public class FolderVideosActivity extends AppCompatActivity {
         findViewById(R.id.btn_info_selected).setVisibility(selectedUris.size() == 1 ? View.VISIBLE : View.GONE);
     }
 
+    private void moveToVault() {
+        if (selectedUris.isEmpty()) return;
+        new AlertDialog.Builder(this)
+            .setTitle("Move to Vault")
+            .setMessage("Move " + selectedUris.size() + " videos to the encrypted Secure Vault? The files will naturally disappear from the Phone Gallery and regular apps.")
+            .setPositiveButton("Move", (d, w) -> executeVaultMove())
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void executeVaultMove() {
+        java.io.File vaultDir = new java.io.File(getExternalFilesDir(null), "OnyxVault");
+        if (!vaultDir.exists()) vaultDir.mkdirs();
+
+        try { new java.io.File(vaultDir, ".nomedia").createNewFile(); } catch (Exception ignored) {}
+
+        Toast.makeText(this, "Moving to Secure Vault...", Toast.LENGTH_SHORT).show();
+        new Thread(() -> {
+            boolean anyError = false;
+            for (Uri uri : selectedUris) {
+                try {
+                    String displayName = "hidden_" + System.currentTimeMillis() + ".mkv";
+                    try (Cursor c = getContentResolver().query(uri, new String[]{MediaStore.Video.Media.DISPLAY_NAME}, null, null, null)) {
+                        if (c != null && c.moveToFirst()) displayName = c.getString(0);
+                    }
+
+                    java.io.File destFile = new java.io.File(vaultDir, displayName);
+                    java.io.InputStream in = getContentResolver().openInputStream(uri);
+                    java.io.OutputStream out = new java.io.FileOutputStream(destFile);
+                    
+                    byte[] buf = new byte[8192];
+                    int len;
+                    while ((len = in.read(buf)) > 0) out.write(buf, 0, len);
+                    in.close(); out.close();
+                } catch (Exception e) {
+                    anyError = true;
+                }
+            }
+
+            boolean finalAnyError = anyError;
+            runOnUiThread(() -> {
+                if (finalAnyError) Toast.makeText(FolderVideosActivity.this, "Some files failed to fully copy.", Toast.LENGTH_SHORT).show();
+                deleteMultipleVideos(); // Use native routine to prompt for source deletion
+            });
+        }).start();
+    }
+
     private void deleteMultipleVideos() {
         if (selectedUris.isEmpty()) return;
         List<Uri> targetUris = new ArrayList<>(selectedUris);
+        
+        if ("VAULT".equals(bucketId)) {
+            for (Uri u : targetUris) {
+                if (u.getPath() != null) new java.io.File(u.getPath()).delete();
+            }
+            toggleSelectionMode(false);
+            loadVideos();
+            return;
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), targetUris);
@@ -148,6 +212,12 @@ public class FolderVideosActivity extends AppCompatActivity {
     }
 
     private void deleteVideo(Uri uri) {
+        if ("VAULT".equals(bucketId)) {
+            if (uri.getPath() != null) new java.io.File(uri.getPath()).delete();
+            loadVideos();
+            return;
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), Collections.singletonList(uri));
@@ -166,6 +236,16 @@ public class FolderVideosActivity extends AppCompatActivity {
     private void showVideoProperties() {
         if (selectedUris.size() != 1) return;
         Uri uri = selectedUris.iterator().next();
+        
+        if ("VAULT".equals(bucketId)) {
+            java.io.File f = new java.io.File(uri.getPath());
+            String msg = "File Name:\n" + f.getName() + "\n\n" +
+                         "Location:\nSecure Vault (Encrypted)\n\n" +
+                         "Size :  " + formatSize(f.length());
+            new AlertDialog.Builder(this).setTitle("Vault Properties").setMessage(msg).setPositiveButton("OK", null).show();
+            return;
+        }
+
         String vName = "Unknown", vPath = "Unknown", vRes = "Unknown", vFormat = "Unknown";
         long vSize = 0, vDuration = 0, vDate = 0;
 
@@ -229,6 +309,11 @@ public class FolderVideosActivity extends AppCompatActivity {
     }
 
     private void loadVideos() {
+        if ("VAULT".equals(bucketId)) {
+            loadVaultVideos();
+            return;
+        }
+
         List<VideoItem> videos = new ArrayList<>();
         Uri uri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
         String[] proj = {
@@ -256,6 +341,31 @@ public class FolderVideosActivity extends AppCompatActivity {
                 }
             }
         }
+        adapter = new FolderAdapter(videos);
+        recyclerView.setAdapter(adapter);
+    }
+
+    private void loadVaultVideos() {
+        List<VideoItem> videos = new ArrayList<>();
+        java.io.File vaultDir = new java.io.File(getExternalFilesDir(null), "OnyxVault");
+        if (vaultDir.exists() && vaultDir.isDirectory()) {
+            java.io.File[] files = vaultDir.listFiles();
+            if (files != null) {
+                for (java.io.File f : files) {
+                    if (f.getName().equals(".nomedia")) continue;
+                    long dur = 0;
+                    try {
+                        android.media.MediaMetadataRetriever ret = new android.media.MediaMetadataRetriever();
+                        ret.setDataSource(f.getAbsolutePath());
+                        String time = ret.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION);
+                        if (time != null) dur = Long.parseLong(time);
+                        ret.release();
+                    } catch (Exception e) {}
+                    videos.add(new VideoItem(0L, f.getName(), dur, Uri.fromFile(f)));
+                }
+            }
+        }
+        
         adapter = new FolderAdapter(videos);
         recyclerView.setAdapter(adapter);
     }

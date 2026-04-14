@@ -29,6 +29,17 @@
                 android:layout_centerVertical="true" />
 
             <ImageView
+                android:id="@+id/btn_vault"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@android:drawable/ic_secure"
+                android:layout_toStartOf="@+id/btn_sort"
+                android:layout_centerVertical="true"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:padding="8dp"
+                android:tint="#F1C40F" />
+
+            <ImageView
                 android:id="@+id/btn_sort"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
@@ -69,6 +80,17 @@
                 android:textSize="20sp"
                 android:textStyle="bold"
                 android:layout_centerInParent="true" />
+
+            <ImageView
+                android:id="@+id/btn_vault_move"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@android:drawable/ic_secure"
+                android:layout_toStartOf="@+id/btn_info_selected"
+                android:layout_centerVertical="true"
+                android:background="?android:attr/selectableItemBackgroundBorderless"
+                android:tint="#F1C40F"
+                android:padding="8dp" />
 
             <ImageView
                 android:id="@+id/btn_info_selected"

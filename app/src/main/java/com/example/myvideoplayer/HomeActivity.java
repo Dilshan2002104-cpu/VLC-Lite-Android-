@@ -50,6 +50,9 @@ public class HomeActivity extends AppCompatActivity {
         layoutSelection = findViewById(R.id.layout_selection);
         tvSelectionCount = findViewById(R.id.tv_selection_count);
 
+        findViewById(R.id.btn_vault_move).setVisibility(View.GONE);
+        findViewById(R.id.btn_vault).setOnClickListener(v -> openVault());
+
         findViewById(R.id.btn_close_selection).setOnClickListener(v -> toggleSelectionMode(false));
         findViewById(R.id.btn_info_selected).setOnClickListener(v -> showFolderProperties());
         findViewById(R.id.btn_delete_selected).setOnClickListener(v -> {
@@ -108,6 +111,44 @@ public class HomeActivity extends AppCompatActivity {
     private void updateSelectionUI() {
         tvSelectionCount.setText(selectedFolders.size() + " Selected");
         findViewById(R.id.btn_info_selected).setVisibility(selectedFolders.size() == 1 ? View.VISIBLE : View.GONE);
+    }
+
+    private void openVault() {
+        android.content.SharedPreferences prefs = getSharedPreferences("OnyxPrefs", MODE_PRIVATE);
+        String savedPin = prefs.getString("vault_pin", null);
+
+        android.widget.EditText input = new android.widget.EditText(this);
+        input.setInputType(android.text.InputType.TYPE_CLASS_NUMBER | android.text.InputType.TYPE_NUMBER_VARIATION_PASSWORD);
+        input.setHint(savedPin == null ? "Create 4-digit PIN" : "Enter 4-digit PIN");
+
+        new AlertDialog.Builder(this)
+            .setTitle(savedPin == null ? "Setup Secure Vault" : "Unlock Vault")
+            .setView(input)
+            .setPositiveButton("Submit", (dialog, which) -> {
+                String pin = input.getText().toString();
+                if (pin.length() < 4) {
+                    android.widget.Toast.makeText(HomeActivity.this, "PIN must be at least 4 digits", android.widget.Toast.LENGTH_SHORT).show();
+                    return;
+                }
+                
+                if (savedPin == null) {
+                    prefs.edit().putString("vault_pin", pin).apply();
+                    launchVault();
+                } else if (savedPin.equals(pin)) {
+                    launchVault();
+                } else {
+                    android.widget.Toast.makeText(HomeActivity.this, "Incorrect PIN!", android.widget.Toast.LENGTH_SHORT).show();
+                }
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void launchVault() {
+        Intent intent = new Intent(HomeActivity.this, FolderVideosActivity.class);
+        intent.putExtra("BUCKET_ID", "VAULT");
+        intent.putExtra("BUCKET_NAME", "Secure Vault");
+        startActivity(intent);
     }
 
     private void deleteMultipleFolders() {
