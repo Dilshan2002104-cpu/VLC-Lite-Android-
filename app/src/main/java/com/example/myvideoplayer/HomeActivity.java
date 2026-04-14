@@ -34,6 +34,8 @@ public class HomeActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_home);
 
+        findViewById(R.id.btn_sort).setVisibility(View.GONE);
+
         recyclerView = findViewById(R.id.recycler_view);
         tvEmpty = findViewById(R.id.tv_empty);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));

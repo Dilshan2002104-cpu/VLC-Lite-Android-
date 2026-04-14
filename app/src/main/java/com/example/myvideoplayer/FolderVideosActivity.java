@@ -12,7 +12,9 @@ import android.view.LayoutInflater;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.ImageView;
+import android.widget.PopupMenu;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -29,6 +31,7 @@ public class FolderVideosActivity extends AppCompatActivity {
 
     private RecyclerView recyclerView;
     private String bucketId;
+    private String currentSortOrder;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -44,6 +47,41 @@ public class FolderVideosActivity extends AppCompatActivity {
         recyclerView = findViewById(R.id.recycler_view);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
 
+        currentSortOrder = getSharedPreferences("OnyxPrefs", MODE_PRIVATE)
+                .getString("video_sort_order", MediaStore.Video.Media.DATE_ADDED + " DESC");
+
+        ImageView btnSort = findViewById(R.id.btn_sort);
+        btnSort.setOnClickListener(v -> {
+            PopupMenu popup = new PopupMenu(FolderVideosActivity.this, btnSort);
+            popup.getMenu().add("Name (A-Z)");
+            popup.getMenu().add("Name (Z-A)");
+            popup.getMenu().add("Date (Newest)");
+            popup.getMenu().add("Date (Oldest)");
+            popup.getMenu().add("Size (Largest)");
+
+            popup.setOnMenuItemClickListener(item -> {
+                String title = item.getTitle().toString();
+                if (title.contains("A-Z")) {
+                    currentSortOrder = MediaStore.Video.Media.DISPLAY_NAME + " ASC";
+                } else if (title.contains("Z-A")) {
+                    currentSortOrder = MediaStore.Video.Media.DISPLAY_NAME + " DESC";
+                } else if (title.contains("Newest")) {
+                    currentSortOrder = MediaStore.Video.Media.DATE_ADDED + " DESC";
+                } else if (title.contains("Oldest")) {
+                    currentSortOrder = MediaStore.Video.Media.DATE_ADDED + " ASC";
+                } else if (title.contains("Size")) {
+                    currentSortOrder = MediaStore.Video.Media.SIZE + " DESC";
+                }
+                
+                getSharedPreferences("OnyxPrefs", MODE_PRIVATE).edit()
+                        .putString("video_sort_order", currentSortOrder).apply();
+                loadVideos();
+                Toast.makeText(this, "Sorted by " + item.getTitle(), Toast.LENGTH_SHORT).show();
+                return true;
+            });
+            popup.show();
+        });
+
         loadVideos();
     }
 
@@ -58,8 +96,8 @@ public class FolderVideosActivity extends AppCompatActivity {
         String sel = MediaStore.Video.Media.BUCKET_ID + "=?";
         String[] selArgs = {bucketId};
 
-        // Querying videos for this specific folder
-        try (Cursor cursor = getContentResolver().query(uri, proj, sel, selArgs, MediaStore.Video.Media.DATE_ADDED + " DESC")) {
+        // Querying videos for this specific folder with custom Dynamic Sort!
+        try (Cursor cursor = getContentResolver().query(uri, proj, sel, selArgs, currentSortOrder)) {
             if (cursor != null) {
                 int idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID);
                 int nameCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME);
