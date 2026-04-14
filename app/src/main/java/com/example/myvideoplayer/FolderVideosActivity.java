@@ -19,6 +19,7 @@ import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.IntentSender;
 import java.util.Collections;
+import java.util.HashSet;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -38,6 +39,12 @@ public class FolderVideosActivity extends AppCompatActivity {
     private String currentSortOrder;
     private Uri pendingDeleteUri = null;
 
+    private boolean isSelectionMode = false;
+    private HashSet<Uri> selectedUris = new HashSet<>();
+    private View layoutNormal, layoutSelection;
+    private TextView tvSelectionCount;
+    private FolderAdapter adapter;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -48,6 +55,20 @@ public class FolderVideosActivity extends AppCompatActivity {
 
         TextView tvTitle = findViewById(R.id.tv_title);
         tvTitle.setText(bName != null ? bName : "Videos");
+
+        layoutNormal = findViewById(R.id.layout_normal);
+        layoutSelection = findViewById(R.id.layout_selection);
+        tvSelectionCount = findViewById(R.id.tv_selection_count);
+
+        findViewById(R.id.btn_close_selection).setOnClickListener(v -> toggleSelectionMode(false));
+        findViewById(R.id.btn_delete_selected).setOnClickListener(v -> {
+            new AlertDialog.Builder(this)
+                .setTitle("Delete Videos")
+                .setMessage("Delete " + selectedUris.size() + " videos permanently?")
+                .setPositiveButton("Delete", (d, w) -> deleteMultipleVideos())
+                .setNegativeButton("Cancel", null)
+                .show();
+        });
 
         recyclerView = findViewById(R.id.recycler_view);
         recyclerView.setLayoutManager(new LinearLayoutManager(this));
@@ -88,6 +109,35 @@ public class FolderVideosActivity extends AppCompatActivity {
         });
 
         loadVideos();
+    }
+
+    private void toggleSelectionMode(boolean active) {
+        isSelectionMode = active;
+        if (!active) selectedUris.clear();
+        layoutNormal.setVisibility(active ? View.GONE : View.VISIBLE);
+        layoutSelection.setVisibility(active ? View.VISIBLE : View.GONE);
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    private void updateSelectionUI() {
+        tvSelectionCount.setText(selectedUris.size() + " Selected");
+    }
+
+    private void deleteMultipleVideos() {
+        if (selectedUris.isEmpty()) return;
+        List<Uri> targetUris = new ArrayList<>(selectedUris);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), targetUris);
+                startIntentSenderForResult(pi.getIntentSender(), 1001, null, 0, 0, 0, null);
+            } catch (Exception e) {}
+        } else {
+            for (Uri uri : targetUris) {
+                try { getContentResolver().delete(uri, null, null); } catch (Exception e) {}
+            }
+            toggleSelectionMode(false);
+            loadVideos();
+        }
     }
 
     private void deleteVideo(Uri uri) {
@@ -142,7 +192,8 @@ public class FolderVideosActivity extends AppCompatActivity {
                 }
             }
         }
-        recyclerView.setAdapter(new VideoAdapter(videos));
+        adapter = new FolderAdapter(videos);
+        recyclerView.setAdapter(adapter);
     }
 
     private String formatDuration(long millis) {
@@ -162,9 +213,9 @@ public class FolderVideosActivity extends AppCompatActivity {
         }
     }
 
-    class VideoAdapter extends RecyclerView.Adapter<VideoAdapter.VH> {
+    class FolderAdapter extends RecyclerView.Adapter<FolderAdapter.VH> {
         List<VideoItem> list;
-        VideoAdapter(List<VideoItem> list) { this.list = list; }
+        FolderAdapter(List<VideoItem> list) { this.list = list; }
 
         @NonNull @Override
         public VH onCreateViewHolder(@NonNull ViewGroup parent, int viewType) {
@@ -177,6 +228,10 @@ public class FolderVideosActivity extends AppCompatActivity {
             holder.tvName.setText(item.name);
             holder.tvDuration.setText(formatDuration(item.duration));
             
+            // Visual check for selection
+            boolean isSelected = selectedUris.contains(item.uri);
+            ((androidx.cardview.widget.CardView)holder.itemView).setCardBackgroundColor(isSelected ? android.graphics.Color.parseColor("#2980B9") : android.graphics.Color.parseColor("#1A1A1A"));
+
             // Rapid Native Thumbnail reading (Android 10+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 try {
@@ -188,6 +243,16 @@ public class FolderVideosActivity extends AppCompatActivity {
             }
 
             holder.itemView.setOnClickListener(v -> {
+                if (isSelectionMode) {
+                    if (selectedUris.contains(item.uri)) selectedUris.remove(item.uri);
+                    else selectedUris.add(item.uri);
+
+                    if (selectedUris.isEmpty()) toggleSelectionMode(false);
+                    else updateSelectionUI();
+                    notifyItemChanged(position);
+                    return;
+                }
+
                 // Populate static playlist for Next/Prev robust functionality
                 FolderVideosActivity.activePlaylist.clear();
                 for (VideoItem vi : list) {
@@ -201,20 +266,12 @@ public class FolderVideosActivity extends AppCompatActivity {
             });
 
             holder.itemView.setOnLongClickListener(v -> {
-                PopupMenu popup = new PopupMenu(FolderVideosActivity.this, v);
-                popup.getMenu().add("Delete Video");
-                popup.setOnMenuItemClickListener(menuItem -> {
-                    if (menuItem.getTitle().toString().equals("Delete Video")) {
-                        new AlertDialog.Builder(FolderVideosActivity.this)
-                            .setTitle("Delete Video")
-                            .setMessage("Are you sure you want to permanently delete this video?")
-                            .setPositiveButton("Delete", (dialog, which) -> deleteVideo(item.uri))
-                            .setNegativeButton("Cancel", null)
-                            .show();
-                    }
-                    return true;
-                });
-                popup.show();
+                if (!isSelectionMode) {
+                    toggleSelectionMode(true);
+                    selectedUris.add(item.uri);
+                    updateSelectionUI();
+                    notifyItemChanged(position);
+                }
                 return true;
             });
         }

@@ -16,6 +16,7 @@ import android.widget.TextView;
 import android.app.AlertDialog;
 import android.app.PendingIntent;
 import android.content.IntentSender;
+import java.util.HashSet;
 
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
@@ -30,8 +31,13 @@ import java.util.List;
 public class HomeActivity extends AppCompatActivity {
 
     private RecyclerView recyclerView;
-    private TextView tvEmpty;
+    private TextView tvEmpty, tvSelectionCount;
+    private View layoutNormal, layoutSelection;
     private static final int PERMISSION_REQ = 100;
+    
+    private boolean isSelectionMode = false;
+    private HashSet<String> selectedFolders = new HashSet<>();
+    private FolderAdapter adapter;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,6 +45,20 @@ public class HomeActivity extends AppCompatActivity {
         setContentView(R.layout.activity_home);
 
         findViewById(R.id.btn_sort).setVisibility(View.GONE);
+
+        layoutNormal = findViewById(R.id.layout_normal);
+        layoutSelection = findViewById(R.id.layout_selection);
+        tvSelectionCount = findViewById(R.id.tv_selection_count);
+
+        findViewById(R.id.btn_close_selection).setOnClickListener(v -> toggleSelectionMode(false));
+        findViewById(R.id.btn_delete_selected).setOnClickListener(v -> {
+            new AlertDialog.Builder(this)
+                .setTitle("Delete Folders")
+                .setMessage("Delete all videos in the " + selectedFolders.size() + " selected folders?")
+                .setPositiveButton("Delete All", (d, w) -> deleteMultipleFolders())
+                .setNegativeButton("Cancel", null)
+                .show();
+        });
 
         recyclerView = findViewById(R.id.recycler_view);
         tvEmpty = findViewById(R.id.tv_empty);
@@ -71,6 +91,50 @@ public class HomeActivity extends AppCompatActivity {
             for (Uri u : uris) {
                 try { getContentResolver().delete(u, null, null); } catch (Exception e) {}
             }
+            loadFolders();
+        }
+    }
+
+    private void toggleSelectionMode(boolean active) {
+        isSelectionMode = active;
+        if (!active) selectedFolders.clear();
+        layoutNormal.setVisibility(active ? View.GONE : View.VISIBLE);
+        layoutSelection.setVisibility(active ? View.VISIBLE : View.GONE);
+        if (adapter != null) adapter.notifyDataSetChanged();
+    }
+
+    private void updateSelectionUI() {
+        tvSelectionCount.setText(selectedFolders.size() + " Selected");
+    }
+
+    private void deleteMultipleFolders() {
+        if (selectedFolders.isEmpty()) return;
+        List<Uri> uris = new ArrayList<>();
+        Uri allUri = MediaStore.Video.Media.EXTERNAL_CONTENT_URI;
+        String[] proj = { MediaStore.Video.Media._ID, MediaStore.Video.Media.BUCKET_ID };
+        try (Cursor cursor = getContentResolver().query(allUri, proj, null, null, null)) {
+            if (cursor != null) {
+                int idCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID);
+                int bidCol = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_ID);
+                while (cursor.moveToNext()) {
+                    if (selectedFolders.contains(cursor.getString(bidCol))) {
+                        uris.add(Uri.withAppendedPath(allUri, String.valueOf(cursor.getLong(idCol))));
+                    }
+                }
+            }
+        }
+        if (uris.isEmpty()) return;
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                PendingIntent pi = MediaStore.createDeleteRequest(getContentResolver(), uris);
+                startIntentSenderForResult(pi.getIntentSender(), 1002, null, 0, 0, 0, null);
+            } catch (Exception e) {}
+        } else {
+            for (Uri u : uris) {
+                try { getContentResolver().delete(u, null, null); } catch (Exception e) {}
+            }
+            toggleSelectionMode(false);
             loadFolders();
         }
     }
@@ -135,7 +199,8 @@ public class HomeActivity extends AppCompatActivity {
             for (String key : folderMap.keySet()) {
                 folders.add(new FolderItem(key, folderIdMap.get(key), folderMap.get(key)));
             }
-            recyclerView.setAdapter(new FolderAdapter(folders));
+            adapter = new FolderAdapter(folders);
+            recyclerView.setAdapter(adapter);
         }
     }
 
@@ -161,7 +226,21 @@ public class HomeActivity extends AppCompatActivity {
             FolderItem item = list.get(position);
             holder.tvName.setText(item.name);
             holder.tvCount.setText(item.count + " Videos");
+            
+            boolean isSelected = selectedFolders.contains(item.id);
+            ((androidx.cardview.widget.CardView)holder.itemView).setCardBackgroundColor(isSelected ? android.graphics.Color.parseColor("#2980B9") : android.graphics.Color.parseColor("#1A1A1A"));
+
             holder.itemView.setOnClickListener(v -> {
+                if (isSelectionMode) {
+                    if (selectedFolders.contains(item.id)) selectedFolders.remove(item.id);
+                    else selectedFolders.add(item.id);
+
+                    if (selectedFolders.isEmpty()) toggleSelectionMode(false);
+                    else updateSelectionUI();
+                    notifyItemChanged(position);
+                    return;
+                }
+
                 Intent intent = new Intent(HomeActivity.this, FolderVideosActivity.class);
                 intent.putExtra("BUCKET_ID", item.id);
                 intent.putExtra("BUCKET_NAME", item.name);
@@ -169,20 +248,12 @@ public class HomeActivity extends AppCompatActivity {
             });
 
             holder.itemView.setOnLongClickListener(v -> {
-                PopupMenu popup = new PopupMenu(HomeActivity.this, v);
-                popup.getMenu().add("Delete Folder");
-                popup.setOnMenuItemClickListener(menuItem -> {
-                    if (menuItem.getTitle().toString().equals("Delete Folder")) {
-                        new AlertDialog.Builder(HomeActivity.this)
-                            .setTitle("Delete Entire Folder")
-                            .setMessage("Are you sure you want to permanently delete all videos belonging to this folder?")
-                            .setPositiveButton("Delete All", (dialog, which) -> deleteFolder(item.id))
-                            .setNegativeButton("Cancel", null)
-                            .show();
-                    }
-                    return true;
-                });
-                popup.show();
+                if (!isSelectionMode) {
+                    toggleSelectionMode(true);
+                    selectedFolders.add(item.id);
+                    updateSelectionUI();
+                    notifyItemChanged(position);
+                }
                 return true;
             });
         }
