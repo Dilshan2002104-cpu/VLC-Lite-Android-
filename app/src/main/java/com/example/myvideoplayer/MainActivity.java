@@ -396,7 +396,6 @@ public class MainActivity extends AppCompatActivity {
         return String.format("%02d:%02d", min, sec);
     }
 
-    // Scoped Storage safely fetches the raw text out of content:// schema into C++ readable file boundary
     private String getPathFromContentUri(Uri uri) {
         try (InputStream is = getContentResolver().openInputStream(uri)) {
             if (is == null) return null;
@@ -415,7 +414,6 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    // Handles the returned Subtitle file perfectly integrating to the video track asynchronously 
     private final ActivityResultLauncher<Intent> subtitlePickerLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
