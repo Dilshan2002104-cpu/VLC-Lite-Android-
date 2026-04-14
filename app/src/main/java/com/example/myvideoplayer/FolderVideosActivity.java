@@ -24,6 +24,9 @@ import java.util.List;
 
 public class FolderVideosActivity extends AppCompatActivity {
 
+    public static List<Uri> activePlaylist = new ArrayList<>();
+    public static int activeVideoIndex = -1;
+
     private RecyclerView recyclerView;
     private String bucketId;
 
@@ -118,7 +121,13 @@ public class FolderVideosActivity extends AppCompatActivity {
             }
 
             holder.itemView.setOnClickListener(v -> {
-                // Launch standard ExoPlayer MainActivity with this specific video file
+                // Populate static playlist for Next/Prev robust functionality
+                FolderVideosActivity.activePlaylist.clear();
+                for (VideoItem vi : list) {
+                    FolderVideosActivity.activePlaylist.add(vi.uri);
+                }
+                FolderVideosActivity.activeVideoIndex = position;
+
                 Intent intent = new Intent(FolderVideosActivity.this, MainActivity.class);
                 intent.setData(item.uri);
                 startActivity(intent);
