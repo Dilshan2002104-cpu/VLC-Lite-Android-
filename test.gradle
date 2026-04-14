@@ -1,0 +1,4 @@
+repositories { mavenCentral() }
+configurations { testConf }
+dependencies { testConf 'org.videolan.android:libvlc-all:3.5.1' }
+task checkDep { doLast { configurations.testConf.resolve() } }

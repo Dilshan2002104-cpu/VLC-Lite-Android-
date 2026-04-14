@@ -1,0 +1,29 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.example.myvideoplayer'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.example.myvideoplayer"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0"
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'com.google.android.material:material:1.11.0'
+    
+    // LibVLC for playing ALL formats (HEVC, AC3, MKV, etc) flawlessly
+    implementation 'org.videolan.android:libvlc-all:3.5.1'
+}
